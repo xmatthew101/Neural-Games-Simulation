@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.sparse.linalg import eigs
 from sklearn.preprocessing import normalize
 
 # Set seed for reproducibility
@@ -281,6 +280,7 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
     #valid signal distributions
     signal_distributions = ["Uniform", "Random", "Half"]
     #initializing signal distribution
+    p_s = np.full(M, 1/M)
     if signal_distr == "Uniform":
         p_s = np.full(M, 1/M)
     elif signal_distr == "Random":
@@ -420,6 +420,7 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
     #valid signal distributions
     signal_distributions = ["Uniform", "Random", "Half"]
     #initializing signal distribution
+    p_s = np.full(M, 1 / M)
     if signal_distr == "Uniform":
         p_s = np.full(M, 1/M)
     elif signal_distr == "Random":
@@ -435,29 +436,28 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
 
     #neuron optimization steps in simulation
     for t in range(T):
-        # Computing Q
-        Q = np.zeros((2 ** N, 2 ** N))
-        for i in range(2 ** N):
-            for j in range(2 ** N):
-                # binary signal in array form
-                msg_j = [(j >> index) & 1 for index in range(N)]
-                entry = 1
-                for neuron in range(N):
-                    entry *= strategies[neuron, i, msg_j[neuron]]
-                Q[i, j] = entry
-        normed_Q = normalize(Q, axis=1, norm="l1")
-        Q = normed_Q
-        print(f"Q: {Q}")
-        # for i in range(2**N):
-        #     print(sum(Q[i]))
-        eigenvalue, eigenvector = eigs(Q, k=1, sigma=1)
-        eigenvalue = eigenvalue.real
-        temp = np.zeros(len(eigenvector))
-        for component in range(len(eigenvector)):
-            temp[component] = eigenvector[component][0].real
-        eigenvector = temp
-        #print("EIGEN")
-        #print(eigenvalue, eigenvector)
+
+
+        # eigenvalues, eigenvectors = np.linalg.eig(Q_power)
+        # for i in range(len(eigenvalues)):
+        #     if math.isclose(1, eigenvalues[i].real, rel_tol = 0.01):
+        #         eigenvalue = eigenvalues[i].real
+        #         print(f"HERE: {eigenvalue}")
+        # print(eigenvalues)
+        # print(eigenvectors)
+
+        # eigenvalue, eigenvector = eigs(Q_power, k=1, sigma=1)
+        #
+        # eigenvalue = eigenvalue.real
+        # temp = np.zeros(len(eigenvector))
+        # for i in range(len(eigenvector)):
+        #     temp[i] = eigenvector[i][0].real
+        # eigenvector = temp / np.sum(temp)
+        # print("EIGEN")
+        # print(eigenvalue)
+        # print(temp)
+        # print(eigenvector)
+        # print(np.matmul(Q, eigenvector.T))
 
         #randomized neuron optimization order per time step
         order = np.random.permutation(N)
@@ -488,7 +488,35 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
         H_cond = conditional_entropy(N, M, joint_distr, msg_distr)
         encoding_qualities.append(H_cond)
 
+        # Compute Q and eigenvector
+        Q = np.zeros((2 ** N, 2 ** N))
+        for i in range(2 ** N):
+            for j in range(2 ** N):
+                # binary signal in array form
+                msg_i = [(i >> index) & 1 for index in range(N)]
+                msg_j = [(j >> index) & 1 for index in range(N)]
+                entry = 1
+                for neuron in range(N):
+                    # print(f"Neuron {neuron+1} with output {msg_j[neuron]} for stimulus {(i, msg_i)} is value: {strategies[neuron, i, msg_j[neuron]]}")
+                    entry *= strategies[neuron, i, msg_j[neuron]]
+                # print(f"neuron output {msg_j} for stimulus input {msg_i} in array element {(i, j)} is value: {entry}")
+                Q[i, j] = entry
+        Q = normalize(Q, axis=1, norm="l1")
+        print(f"Q: {Q}")
+        # for i in range(2 ** N):
+        #     print(sum(Q[i]))
+        Q_power = Q
+        for i in range(100):
+            Q_power = np.matmul(Q_power, Q_power)
+            Q_power = normalize(Q_power, axis=1, norm="l1")
+        eigenvector = np.average(Q_power, axis=0)
+        # eigenvector = eigenvector / np.sum(eigenvector)
+        # print(f"Q power: {Q_power}")
+        print(f"Eigenvector: {eigenvector}")
+        #print(sum(eigenvector))
+
         p_s = eigenvector
+
     if kappa >= 0:
         print(f"Strategies ({method} for N = {N}, M = {M}, mu = {mu}, kappa = {kappa} \n {strategies}")
     else:
@@ -505,18 +533,37 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+
+    fig, axes = plt.subplots(N, 1, figsize=(7, 2 * N), sharex=True, sharey=True)
+
+    for k in range(N):
+        for s in range(M):
+            axes[k].plot(strategy_traj[:, k, s])  # , linestyle=":")
+        axes[k].set_title(f"Neuron {k + 1} Strategy")
+        axes[k].set_ylim(-0.1, 1.1)
+        axes[k].set_xlabel("Optimization Step")
+        axes[k].set_ylabel("P(Y=1|s)")
+    fig.suptitle(f'Neuron Strategies Over Time ({method}), N = {N}, M = {M}, mu = {mu}')
+    if signal_distr == "Half":
+        fig.suptitle(
+            f'Neuron Strategies Over Time ({method}), N = {N}, M = {M // 2}, mu = {mu}')
+    if kappa >= 0:
+        fig.suptitle(
+            f'Neuron Strategies Over Time ({method}), N = {N}, M = {M}, mu = {mu}, kappa = {kappa}')
+    plt.tight_layout()
+    plt.show()
+
     return encoding_qualities, strategy_traj
 
-simulation_average(num_trials=10, N=4, M=2, T=500, mu=0.1, kappa=0.0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"])
-simulation_average(num_trials=10, N=4, M=2, T=500, mu=0.25, kappa=0.0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"])
+#simulation_average(num_trials=10, N=4, M=4, T=500, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"])
 
-# simulation_average(num_trials=10, N=4, M=2, T=500, mu=0.5, kappa=0.1, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"])
-# simulation_average(num_trials=10, N=4, M=2, T=500, mu=0.5, kappa=0.25, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"])
-# simulation_average(num_trials=10, N=4, M=2, T=500, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"])
+#simulation_closed_loop(N=3, M=8, T=5, mu=2, lr=0.01, signal_distr="Uniform", method="Numerical")
+#simulation_closed_loop(N=3, M=8, T=5, mu=2, lr=0.01, signal_distr="Uniform", method="Numerical")
 
-#simulation_closed_loop(N=3, M=8, T=48, mu=3, lr=0.01, signal_distr="Uniform", method="Numerical")
 
-#simulation_closed_loop(N=3, M=8, T=500, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"])
+simulation_closed_loop(N=3, M=8, T=100, mu=2, lr=0.01, signal_distr="Random", method="Numerical")
+simulation_closed_loop(N=3, M=8, T=100, mu=2, lr=0.01, signal_distr="Uniform", method="Numerical")
+
 
 # and then N=3, M=8, 10 runs, pick one very non-uniform stimulus 1/2, 1/4, 1/8
 
