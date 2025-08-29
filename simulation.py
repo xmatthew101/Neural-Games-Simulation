@@ -2,10 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import normalize
 
-# Set seed for reproducibility
-np.random.seed(15)
-
-
 #helper functions
 
 #computes joint distribution p(s, y1, ..., yN)
@@ -142,7 +138,7 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0):
     return EV
 
 #central finite-difference gradient descent used as numerical method
-def optimize_neuron_numerical(N, M, k, strategies, mu, p_s, lr, neuron_types=[], kappa=-1.0):
+def optimize_neuron_numerical(N, M, k, strategies, mu, p_s, lr, neuron_types=[], kappa=-1.0, bound=0.0):
     grad = np.zeros(M)
     eps = 1e-12
     for i in range(M):
@@ -169,6 +165,11 @@ def optimize_neuron_numerical(N, M, k, strategies, mu, p_s, lr, neuron_types=[],
     #gradient descent
     strategies[k, :, 1] += lr * grad
     strategies[k, :, 1] = np.clip(strategies[k, :, 1], 0, 1)
+    if bound>=0 and bound<1:
+        strategies[k, :, 1] = np.clip(strategies[k, :, 1], bound, 1-bound)
+    else:
+        print("Error: bound specified is invalid")
+        return
     strategies[k, :, 0] = 1 - strategies[k, :, 1]
     return strategies
 
@@ -265,7 +266,7 @@ def optimize_neuron_analytical(N, M, k, strategies, mu, p_s, lr):
 
 
 #main simulation function
-def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0):
+def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0):
     #each neuron k has a strategy matrix Y_k of shape (M, 2)
     #y_k[i, 1] = Pr(Y_k = 1 | s = s_i)
     #y_k[i, 0] = 1 - y_k[i, 1] = Pr(Y_k = 0 | s = s_i)
@@ -340,11 +341,11 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
     # plt.show()
     return encoding_qualities, strategy_traj
 
-def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0):
+def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0):
     runs = []
     neuron_strategies = []
     for trial in range(num_trials):
-        encoding_qualities, strategies = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa)
+        encoding_qualities, strategies = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound)
         runs.append(encoding_qualities)
         neuron_strategies.append(strategies)
     runs = np.array(runs)
@@ -405,7 +406,7 @@ def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron
 
     return
 
-def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0):
+def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0):
     #each neuron k has a strategy matrix Y_k of shape (M, 2)
     #y_k[i, 1] = Pr(Y_k = 1 | s = s_i)
     #y_k[i, 0] = 1 - y_k[i, 1] = Pr(Y_k = 0 | s = s_i)
@@ -468,7 +469,7 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
                 strategy_traj[t, k, :] = strategies[k, :, 1]
         elif method == "Numerical":
             for k in order:
-                strategies = optimize_neuron_numerical(N, M, k, strategies, mu, p_s, lr, neuron_types, kappa)
+                strategies = optimize_neuron_numerical(N, M, k, strategies, mu, p_s, lr, neuron_types, kappa, bound)
                 strategy_traj[t, k, :] = strategies[k, :, 1]
         elif method == "Random":
             for k in order:
@@ -486,7 +487,7 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
         joint_distr = joint_distribution(N, M, p_s, strategies)
         msg_distr = message_distribution(joint_distr)
         H_cond = conditional_entropy(N, M, joint_distr, msg_distr)
-        encoding_qualities.append(H_cond)
+
 
         # Compute Q and eigenvector
         Q = np.zeros((2 ** N, 2 ** N))
@@ -502,7 +503,7 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
                 # print(f"neuron output {msg_j} for stimulus input {msg_i} in array element {(i, j)} is value: {entry}")
                 Q[i, j] = entry
         Q = normalize(Q, axis=1, norm="l1")
-        print(f"Q: {Q}")
+
         # for i in range(2 ** N):
         #     print(sum(Q[i]))
         Q_power = Q
@@ -512,10 +513,18 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
         eigenvector = np.average(Q_power, axis=0)
         # eigenvector = eigenvector / np.sum(eigenvector)
         # print(f"Q power: {Q_power}")
-        print(f"Eigenvector: {eigenvector}")
+        #print(t)
+        if t == T-1:
+            print(f"Q: {Q}")
+            print(f"Eigenvector: {eigenvector}")
         #print(sum(eigenvector))
-
         p_s = eigenvector
+        eigen_entropy = -sum(p * np.log2(p) for p in eigenvector if p > 0)
+
+        H_cond += eigen_entropy
+        #print(H_cond)
+
+        encoding_qualities.append(H_cond)
 
     if kappa >= 0:
         print(f"Strategies ({method} for N = {N}, M = {M}, mu = {mu}, kappa = {kappa} \n {strategies}")
@@ -526,9 +535,9 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
     plt.figure(figsize=(10, 5))
     plt.plot(encoding_qualities, label='H(S | Y1..YN)')
     plt.xlabel('Optimization Step')
-    plt.ylabel('Conditional Entropy')
-    plt.ylim(ymax=0.1)
-    plt.title(f'Encoding Quality Over Time ({method}) for N = {N}, M = {M}, mu = {mu}')
+    plt.ylabel('Information Transmitted')
+    #plt.ylim(ymax=0.1)
+    plt.title(f'Information Transmitted Over Time ({method}) for N = {N}, M = {M}, mu = {mu}')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -561,8 +570,17 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
 #simulation_closed_loop(N=3, M=8, T=5, mu=2, lr=0.01, signal_distr="Uniform", method="Numerical")
 
 
-simulation_closed_loop(N=3, M=8, T=100, mu=2, lr=0.01, signal_distr="Random", method="Numerical")
-simulation_closed_loop(N=3, M=8, T=100, mu=2, lr=0.01, signal_distr="Uniform", method="Numerical")
+# Set seed for reproducibility
+np.random.seed(15)
+simulation_closed_loop(N=3, M=8, T=1000, mu=2, lr=0.01, signal_distr="Random", method="Numerical", bound=0.05)
+np.random.seed(16)
+simulation_closed_loop(N=3, M=8, T=1000, mu=2, lr=0.01, signal_distr="Random", method="Numerical", bound=0.05)
+np.random.seed(17)
+simulation_closed_loop(N=3, M=8, T=1000, mu=2, lr=0.01, signal_distr="Random", method="Numerical", bound=0.05)
+np.random.seed(18)
+simulation_closed_loop(N=3, M=8, T=1000, mu=2, lr=0.01, signal_distr="Random", method="Numerical", bound=0.05)
+
+#simulation_closed_loop(N=3, M=8, T=100, mu=2, lr=0.01, signal_distr="Uniform", method="Numerical")
 
 
 # and then N=3, M=8, 10 runs, pick one very non-uniform stimulus 1/2, 1/4, 1/8
