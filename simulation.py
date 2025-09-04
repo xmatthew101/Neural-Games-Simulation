@@ -65,7 +65,7 @@ def compute_joint_marginals(N, M, joint_distr):
 
 #Computes expected utility EV_k(Yk; Y_-k) as in eq (8), EV_k = sum_{j != k} H(Yk | Yj) - mu H(Yk | S)
 def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autapse=False, reciprocal=True):
-    allowed_reciprocal = [(1,3), (2,4), (3,2), (4,1)]
+    allowed_reciprocal = [(1,3),(2,4),(3,2),(4,1)]
     joint_distr = joint_distribution(N, M, p_s, strategies)
     #msg_distr = message_distribution(joint_distr)
     #compute H(Yk|Yj)
