@@ -102,9 +102,8 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
                                         #different cases for reciprocality
                                         if reciprocal:
                                             cond_ent -= p_joint[(a,b)] * np.log2(p_cond)
-                                        else:
-                                            if (k,j) in allowed_reciprocal:
-                                                cond_ent -= p_joint[(a, b)] * np.log2(p_cond)
+                                        elif (k+1,j+1) in allowed_reciprocal:
+                                            cond_ent -= p_joint[(a, b)] * np.log2(p_cond)
                                     #H(X|X)
                                     else:
                                         #different cases for reciprocality
@@ -119,9 +118,8 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
                                         #different cases for reciprocality
                                         if reciprocal:
                                             cond_ent += p_joint[(a,b)] * np.log2(p_cond)
-                                        else:
-                                            if (k,j) in allowed_reciprocal:
-                                                cond_ent += p_joint[(a,b)] * np.log2(p_cond)
+                                        elif (k+1,j+1) in allowed_reciprocal:
+                                            cond_ent += p_joint[(a,b)] * np.log2(p_cond)
                                     #H(Y|Y)
                                     else:
                                         #different cases for reciprocality
