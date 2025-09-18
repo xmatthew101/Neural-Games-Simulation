@@ -80,8 +80,10 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
         #calculates and sets the joint probability dictionary values
         for (s,msg), prob in joint_distr.items():
             p_joint[(msg[k], msg[j])] += prob
+        #print(f"k={k+1}, j={j+1} p_joint: {p_joint}")
         #intialize dictionary of marginal probabilities for p_yj[b]
         p_yj = {b: p_joint[(0,b)] + p_joint[(1,b)] for b in [0,1]}
+        #print(f"p_yj: {p_yj}")
         #summing over iterations of neuron message combinations, k=a & j=b
         for b in [0,1]:
             if p_yj[b] > 0:
@@ -94,7 +96,12 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
                             H_Yk_Yj -= p_joint[(a, b)] * np.log2(p_cond)
                         #calculates H_Yk_Yk if j==k and if autapse modification is true
                         elif autapse:
+                            #print(p_joint[(a, b)])
+                            #print(p_cond)
+                            #print(np.log2(p_cond))
+                            #print(p_joint[(a, b)] * np.log2(p_cond))
                             H_Yk_Yk -= p_joint[(a, b)] * np.log2(p_cond)
+        #print(f"Neuron {k + 1} H_Yk_Yk = {H_Yk_Yk}")
         #combining H(Yk|Yj) to the total EV, along with correct sign and coefficient
         #default case, all neurons are identical
         if len(neuron_types) == 0:
@@ -134,6 +141,7 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
                     if reciprocal:
                         EV += 2*(1-kappa) * H_Yk_Yj
                     else:
+                        #print(f"Neuron {k+1} 1-kappa = {(1-kappa) * H_Yk_Yj}")
                         EV += (1-kappa) * H_Yk_Yj
             else:
                 print("Neuron types do not map correctly")
@@ -176,6 +184,7 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
                 EV -= mu * H_Yk_S
             #inhibitory neurons
             elif neuron_k_type == "I":
+                #print(f"Neuron {k+1} kappa*H(Yk|Yk) = {kappa * H_Yk_S}")
                 EV += kappa * H_Yk_S
             else:
                 print("Neuron types do not map correctly")
@@ -720,7 +729,8 @@ np.random.seed(15)
 #simulation_average(num_trials=10, N=4, M=4, T=5000, mu=0, kappa=0.3, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
 #simulation_average(num_trials=10, N=4, M=4, T=5000, mu=0, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
 #simulation_average(num_trials=10, N=4, M=4, T=1300, mu=0, kappa=0.7, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
-simulation_average(num_trials=10, N=4, M=4, T=3500, mu=0.5, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
+simulation_average(num_trials=10, N=4, M=4, T=3500, mu=0, kappa=1, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
+simulation_average(num_trials=10, N=4, M=4, T=3500, mu=0.5, kappa=1, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
 
 
 
