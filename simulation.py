@@ -75,33 +75,46 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
     #computes H(Yk|Yj) for each opposing neuron j and adds/subtracts it from total conditional entropy with the correct coefficient    
     for j in range(N):
         H_Yk_Yj = 0
-        #intialize dictionary of probabilities for (a,b) joint message tuples, p(yk=a, yj=b)
-        p_joint = { (a,b):0 for a in [0,1] for b in [0,1] }
-        #calculates and sets the joint probability dictionary values
-        for (s,msg), prob in joint_distr.items():
-            p_joint[(msg[k], msg[j])] += prob
-        #print(f"k={k+1}, j={j+1} p_joint: {p_joint}")
-        #intialize dictionary of marginal probabilities for p_yj[b]
-        p_yj = {b: p_joint[(0,b)] + p_joint[(1,b)] for b in [0,1]}
-        #print(f"p_yj: {p_yj}")
-        #summing over iterations of neuron message combinations, k=a & j=b
-        for b in [0,1]:
-            if p_yj[b] > 0:
-                for a in [0,1]:
-                    #calculates conditional probability p(yk=a|yl=b)
-                    p_cond = p_joint[(a,b)] / p_yj[b] if p_yj[b] > 0 else 0
-                    if p_cond > 0:
-                        #calculates H_Yk_Yj for j!=k
-                        if j != k:
-                            H_Yk_Yj -= p_joint[(a, b)] * np.log2(p_cond)
-                        #calculates H_Yk_Yk if j==k and if autapse modification is true
-                        elif autapse:
-                            #print(p_joint[(a, b)])
-                            #print(p_cond)
-                            #print(np.log2(p_cond))
-                            #print(p_joint[(a, b)] * np.log2(p_cond))
-                            H_Yk_Yk -= p_joint[(a, b)] * np.log2(p_cond)
-        #print(f"Neuron {k + 1} H_Yk_Yk = {H_Yk_Yk}")
+        #calculates H_Yk_Yj for j!=k
+        if j!= k:
+            #intialize dictionary of probabilities for (a,b) joint message tuples, p(yk=a, yj=b)
+            p_joint = {(a,b):0 for a in [0,1] for b in [0,1]}
+            #calculates and sets the joint probability dictionary values
+            for (s,msg), prob in joint_distr.items():
+                p_joint[(msg[k], msg[j])] += prob
+            #print(f"k={k+1}, j={j+1} p_joint: {p_joint}")
+            #calculates dictionary of marginal probabilities for p_yj[b]
+            p_yj = {b: p_joint[(0,b)] + p_joint[(1,b)] for b in [0,1]}
+            #print(f"p_yj: {p_yj}")
+            #summing over iterations of neuron message combinations, k=a & j=b
+            for b in [0,1]:
+                if p_yj[b] > 0:
+                    for a in [0,1]:
+                        #calculates conditional probability p(yk=a|yl=b)
+                        p_cond = p_joint[(a,b)] / p_yj[b] if p_yj[b] > 0 else 0
+                        if p_cond > 0:
+                            H_Yk_Yj -= p_joint[(a,b)] * np.log2(p_cond)    
+        #calculates H_Yk_Yk if j==k and if autapse modification is true
+        elif autapse:
+            #intialize dictionary of probabilities for (a,b) joint message tuples, p(yk=a, yk'=b)
+            p_joint = {(a,b):0 for a in [0,1] for b in [0,1]}
+            #calculates and sets the joint probability dictionary values
+            for a in [0,1]:
+                for b in [0,1]:
+                    for s in range(M):
+                        p_joint[(a,b)] += p_s[s]*strategies[k,s,a]*strategies[k,s,b]
+            #calculates dictionary of marginal probabilities for p_yk'[b]
+            p_yk = {b: p_joint[(0,b)] + p_joint[(1,b)] for b in [0,1]}
+            for b in [0,1]:
+                if p_yk[b] > 0:
+                    for a in [0,1]:
+                        #calculates conditional probability p(yk=a|yk'=b)
+                        p_cond = p_joint[(a,b)] / p_yk[b] if p_yk[b] > 0 else 0
+                        if p_cond > 0:
+                            H_Yk_Yk -= p_joint[(a,b)] * np.log2(p_cond)
+
+            #print(f"Neuron {k + 1} H_Yk_Yk = {H_Yk_Yk}")
+        
         #combining H(Yk|Yj) to the total EV, along with correct sign and coefficient
         #default case, all neurons are identical
         if len(neuron_types) == 0:
@@ -181,10 +194,11 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
         else:
             #excitatory neurons
             if neuron_k_type == "E":
+                #print(f"Neuron {k+1} E kappa*H(Yk|Yk) = {H_Yk_S}")
                 EV -= mu * H_Yk_S
             #inhibitory neurons
             elif neuron_k_type == "I":
-                #print(f"Neuron {k+1} kappa*H(Yk|Yk) = {kappa * H_Yk_S}")
+                #print(f"Neuron {k+1} I kappa*H(Yk|Yk) = {H_Yk_S}")
                 EV += kappa * H_Yk_S
             else:
                 print("Neuron types do not map correctly")
@@ -698,21 +712,18 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
         return encoding_qualities, strategy_traj, EV_traj
     return encoding_qualities, strategy_traj
 
-#simulation_average(num_trials=10, N=4, M=4, T=500, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"])
-
-#simulation_closed_loop(N=3, M=8, T=5, mu=2, lr=0.01, signal_distr="Uniform", method="Numerical")
-#simulation_closed_loop(N=3, M=8, T=5, mu=2, lr=0.01, signal_distr="Uniform", method="Numerical")
-
 
 # Set seed for reproducibility
-# np.random.seed(15)
+np.random.seed(15)
+
+#normal runs
 # simulation_average(num_trials=5, N=2, M=2, T=500, mu=1, lr=0.01, signal_distr="Uniform", method="Numerical")
 # simulation_average(num_trials=5, N=2, M=4, T=500, mu=1, lr=0.01, signal_distr="Uniform", method="Numerical")
 # simulation_average(num_trials=5, N=3, M=8, T=500, mu=2, lr=0.01, signal_distr="Uniform", method="Numerical")
 # simulation_average(num_trials=5, N=4, M=4, T=500, mu=3, lr=0.01, signal_distr="Uniform", method="Numerical")
 # simulation_average(num_trials=5, N=4, M=8, T=500, mu=3, lr=0.01, signal_distr="Uniform", method="Numerical")
 
-
+#closed loop runs
 # np.random.seed(15)
 # simulation_closed_loop(N=3, M=8, T=1000, mu=2, lr=0.01, signal_distr="Random", method="Numerical", bound=0.05, autapse=True, show_EV=True)
 # np.random.seed(16)
@@ -722,25 +733,16 @@ def simulation_closed_loop(N, M, T, mu, lr, signal_distr, method, neuron_types=[
 # np.random.seed(18)
 # simulation_closed_loop(N=3, M=8, T=1000, mu=2, lr=0.01, signal_distr="Random", method="Numerical", bound=0.05, autapse=True, show_EV=True)
 
+#autapse runs
 np.random.seed(15)
+#simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
+#simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
+simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.2, kappa=0.2, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
+simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.5, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
+simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
+
+#non-reciprocal & autapse runs
 #simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
-#simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.2, kappa=0.2, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
-#simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
-#simulation_average(num_trials=10, N=4, M=4, T=5000, mu=0, kappa=0.3, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
-#simulation_average(num_trials=10, N=4, M=4, T=5000, mu=0, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
-#simulation_average(num_trials=10, N=4, M=4, T=1300, mu=0, kappa=0.7, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
-simulation_average(num_trials=10, N=4, M=4, T=3500, mu=0, kappa=1, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
-simulation_average(num_trials=10, N=4, M=4, T=3500, mu=0.5, kappa=1, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
 
 
-
-# np.random.seed(16)
-# simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
-# np.random.seed(17)
-# simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
-# np.random.seed(18)
-# simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
-
-
-# and then N=3, M=8, 10 runs, pick one very non-uniform stimulus 1/2, 1/4, 1/8
 
