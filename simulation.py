@@ -293,6 +293,9 @@ def optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=
     #if new strategy performs worse, revert to old strategy
     if new_EV < old_EV:
         strategies[k] = old_strategy
+    if show_EV:
+        EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal)
+        return strategies, EV
     return strategies
 
 #analytical gradient from Section 6
@@ -394,7 +397,11 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
                 strategy_traj[t, k, :] = strategies[k, :, 1]
         elif method == "Random":
             for k in order:
-                strategies = optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types, kappa, bound, autapse, reciprocal, show_EV)
+                if show_EV:
+                    strategies, EV = optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types, kappa, bound, autapse, reciprocal, show_EV)
+                    EV_traj[t, k] = EV
+                else:
+                    strategies = optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types, kappa, bound, autapse, reciprocal, show_EV)
                 strategy_traj[t, k, :] = strategies[k, :, 1]
         elif method == "Benchmark":
             for k in order:
@@ -744,10 +751,18 @@ np.random.seed(15)
 #simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.2, kappa=0.2, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
 #simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.5, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
 #simulation_average(num_trials=10, N=4, M=4, T=10000, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True)
-simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], autapse=True)
+
+#simulation_average(num_trials=10, N=4, M=4, T=4200, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, show_EV=True)
+#simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.5, kappa=0, lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], autapse=True, show_EV=True)
+simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.2, kappa=0.2, lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], autapse=True, show_EV=True)
+
 
 #non-reciprocal & autapse runs
 np.random.seed(15)
+#simulation_average(num_trials=10, N=4, M=4, T=8000, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False, show_EV=True)
+#simulation_average(num_trials=10, N=4, M=4, T=2000, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False, show_EV=True)
+#simulation_average(num_trials=10, N=4, M=4, T=2000, mu=0.5, kappa=1, lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False, show_EV=True)
+
 '''
 simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
 simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0, kappa=0.3, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
