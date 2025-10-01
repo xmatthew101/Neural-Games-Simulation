@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import normalize
+import pandas as pd
 
 #helper functions
 
@@ -346,19 +347,27 @@ def optimize_neuron_analytical(N, M, k, strategies, mu, p_s, lr):
 
 
 #main simulation function
-def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False):
+def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False, seed=15, trial=0):
     #each neuron k has a strategy matrix Y_k of shape (M, 2)
     #y_k[i, 1] = Pr(Y_k = 1 | s = s_i)
     #y_k[i, 0] = 1 - y_k[i, 1] = Pr(Y_k = 0 | s = s_i)
     #initialize random strategies
+    #np.random.seed(seed)
     strategies = np.random.rand(N, M)
     strategies = np.random.uniform(0.4, 0.6, size=(N, M))
     strategies = np.stack([1 - strategies, strategies], axis=2)  # shape (N, M, 2)
-
+    #intialize arrays for plot values
     strategy_traj = np.zeros((T, N, M))
     EV_traj = np.zeros((T, N))
-    #initialize array for encoding quality values in the plot
     encoding_qualities = []
+    #intializing dataframe
+    strategy_names = []
+    EV_names = []
+    for neuron in range(N):
+        EV_names.append(f'EV N{neuron+1}')
+        for stimulus in range(M):
+            strategy_names.append(f"Strategy N{neuron+1} M{stimulus+1}")
+    df = pd.DataFrame(index=range(T), columns=strategy_names+EV_names+["Encoding"])
     #valid optimization methods
     methods = ["Analytical", "Numerical", "Random", "Benchmark"]
     #valid signal distributions
@@ -380,6 +389,7 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
 
     #neuron optimization steps in simulation
     for t in range(T):
+        #np.random.seed(15+t)
         #randomized neuron optimization order per time step
         order = np.random.permutation(N)
         if method == "Analytical":
@@ -417,35 +427,31 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
         H_cond = conditional_entropy(N, M, joint_distr, msg_distr)
         encoding_qualities.append(H_cond)
 
-    #print(f"Strategies ({method} for N = {N}, M = {M}, mu = {mu} \n {strategies}")
-
-    #plots
-    # plt.figure(figsize=(10, 5))
-    # plt.plot(encoding_qualities, label='H(S | Y1..YN)')
-    # plt.xlabel('Optimization Step')
-    # plt.ylabel('Conditional Entropy')
-    # plt.ylim(ymax=0)
-    # plt.title(f'Encoding Quality Over Time ({method}) for N = {N}, M = {M}, mu = {mu}')
-    # plt.legend()
-    # plt.grid(True)
-    # plt.tight_layout()
-    # plt.show()
+    #filling in dataframe values
+    df["Encoding"] = encoding_qualities
+    for neuron in range(N):
+        for stimulus in range(M):
+            df[f"Strategy N{neuron+1} M{stimulus+1}"] = strategy_traj[:, neuron, stimulus]
     if show_EV:
+        for neuron in range(N):
+            df[f'EV N{neuron+1}'] = EV_traj[:, neuron]
+        df.to_csv(f"Simulation Values Trial {trial+1}.csv", index=False)
         return encoding_qualities, strategy_traj, EV_traj
+    df.to_csv(f"Simulation Values Trial {trial+1}.csv", index=False)
     return encoding_qualities, strategy_traj
 
-def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False):
+def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False, seed=15):
     runs = []
     neuron_strategies = []
     neuron_EVs = []
     for trial in range(num_trials):
         if show_EV:
-            encoding_qualities, strategies, EVs = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV)
+            encoding_qualities, strategies, EVs = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV, seed, trial)
             runs.append(encoding_qualities)
             neuron_strategies.append(strategies)
             neuron_EVs.append(EVs)
         else:
-            encoding_qualities, strategies = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV)
+            encoding_qualities, strategies = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV, seed, trial)
             runs.append(encoding_qualities)
             neuron_strategies.append(strategies)
     runs = np.array(runs)
@@ -754,7 +760,16 @@ np.random.seed(15)
 
 #simulation_average(num_trials=10, N=4, M=4, T=4200, mu=0.5, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, show_EV=True)
 #simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.5, kappa=0, lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], autapse=True, show_EV=True)
-simulation_average(num_trials=10, N=4, M=4, T=1000, mu=0.2, kappa=0.2, lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], autapse=True, show_EV=True)
+
+
+np.random.seed(15)
+
+simulation_average(num_trials=10, N=4, M=4, T=4000, mu=1, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=True, show_EV=True)
+
+#simulation_average(num_trials=10, N=4, M=4, T=8000, mu=1, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
+
+#simulation_average(num_trials=10, N=4, M=4, T=4000, mu=0, kappa=0, lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], autapse=True)
+#simulation_average(num_trials=10, N=4, M=4, T=4000, mu=0, kappa=0, lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
 
 
 #non-reciprocal & autapse runs
