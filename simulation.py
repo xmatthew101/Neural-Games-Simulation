@@ -421,11 +421,17 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
     #intializing dataframe
     strategy_names = []
     EV_names = []
+    mu_names = []
+    kappa_names = []
     for neuron in range(N):
-        EV_names.append(f'EV N{neuron+1}')
+        if show_EV:
+            EV_names.append(f'EV N{neuron+1}')
+        if network:
+            mu_names.append(f'Mu{neuron+1}')
+            kappa_names.append(f'Kappa{neuron+1}')
         for stimulus in range(M):
             strategy_names.append(f"Strategy N{neuron+1} M{stimulus+1}")
-    df = pd.DataFrame(index=range(T), columns=strategy_names+EV_names+["Encoding"])
+    df = pd.DataFrame(index=range(T), columns=strategy_names+mu_names+kappa_names+EV_names+["Encoding"])
     #valid optimization methods
     methods = ["Analytical", "Numerical", "Random", "Benchmark"]
     #valid signal distributions
@@ -504,9 +510,14 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
         if show_EV:
             for neuron in range(N):
                 df[f'EV N{neuron + 1}'] = EV_traj[:, neuron]
+                df[f'Mu{neuron + 1}'] = mu_traj[:, neuron]
+                df[f'Kappa{neuron + 1}'] = kappa_traj[:, neuron]
             df.to_csv(f"Simulation Values Trial {trial + 1}.csv", index=False)
             return encoding_qualities, strategy_traj, EV_traj, mu_traj, kappa_traj
         else:
+            for neuron in range(N):
+                df[f'Mu{neuron + 1}'] = mu_traj[:, neuron]
+                df[f'Kappa{neuron + 1}'] = kappa_traj[:, neuron]
             df.to_csv(f"Simulation Values Trial {trial + 1}.csv", index=False)
             return encoding_qualities, strategy_traj, mu_traj, kappa_traj
     elif show_EV:
