@@ -65,13 +65,16 @@ def compute_joint_marginals(N, M, joint_distr):
     return marginals, joint_pairwise
 
 #Computes expected utility EV_k(Y^k; Y^-k) as in eq (8)
-def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autapse=False, reciprocal=True):
+def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autapse=False, reciprocal=True, network=False):
+    if network:
+        autapse=False
+        reciprocal=True
     allowed_reciprocal = [(1,3),(2,4),(3,2),(4,1)]
     joint_distr = joint_distribution(N, M, p_s, strategies)
     #msg_distr = message_distribution(joint_distr)
     EV = 0
     H_Yk_Yk = 0
-    if kappa < 0:
+    if not network and kappa < 0:
         kappa = 0.5
     #computes H(Yk|Yj) for each opposing neuron j and adds/subtracts it from total conditional entropy with the correct coefficient    
     for j in range(N):
@@ -128,15 +131,25 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
             if neuron_j_type == "E":
                 #H(Y|X)
                 if neuron_k_type == "I":
-                    #different cases for reciprocality
-                    if reciprocal:
+                    #check if network learning model
+                    if network:
+                        if (k+1, j+1) in allowed_reciprocal:
+                            EV -= mu[k] * H_Yk_Yj
+                        else:
+                            EV -= (1-mu[k]) * H_Yk_Yj
+                    #else different cases for reciprocality
+                    elif reciprocal:
                         EV -= H_Yk_Yj
                     elif (k+1,j+1) in allowed_reciprocal:
                         EV -= H_Yk_Yj
+
                 #H(X|X)
                 else:
-                    #different cases for reciprocality
-                    if reciprocal:
+                    #check if network learning model
+                    if network:
+                        EV -= (1-mu[k]) * H_Yk_Yj
+                    #else different cases for reciprocality
+                    elif reciprocal:
                         EV -= 2*(1-mu) * H_Yk_Yj
                     else:
                         EV -= (1-mu) * H_Yk_Yj
@@ -144,15 +157,24 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
             elif neuron_j_type == "I":
                 #H(X|Y)
                 if neuron_k_type == "E":
-                    #different cases for reciprocality
-                    if reciprocal:
+                    #check if network learning model
+                    if network:
+                        if (k+1, j+1) in allowed_reciprocal:
+                            EV += kappa[k] * H_Yk_Yj
+                        else:
+                            EV += (1-kappa[k]) * H_Yk_Yj
+                    #else different cases for reciprocality
+                    elif reciprocal:
                         EV += H_Yk_Yj
                     elif (k+1,j+1) in allowed_reciprocal:
                         EV += H_Yk_Yj
                 #H(Y|Y)
                 else:
-                    #different cases for reciprocality
-                    if reciprocal:
+                    #check if network learning model
+                    if network:
+                        EV += (1-kappa[k]) * H_Yk_Yj
+                    #else different cases for reciprocality
+                    elif reciprocal:
                         EV += 2*(1-kappa) * H_Yk_Yj
                     else:
                         #print(f"Neuron {k+1} 1-kappa = {(1-kappa) * H_Yk_Yj}")
@@ -180,9 +202,21 @@ def compute_EV(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, autaps
     #excitatory and inhibitory neurons
     elif len(neuron_types) == N:
         neuron_k_type = neuron_types[k]
-        if mu < 0 or mu > 1:
+        if not network and (mu < 0 or mu > 1):
             mu = 0.5
-        if reciprocal:
+        if network:
+            #excitatory neurons
+            if neuron_k_type == "E":
+                #print(f"Neuron {k + 1} E kappa*H(Yk|Yk) = {H_Yk_S}")
+                EV -= mu[k] * H_Yk_S
+            #inhibitory neurons
+            elif neuron_k_type == "I":
+                #print(f"Neuron {k + 1} I kappa*H(Yk|Yk) = {H_Yk_S}")
+                EV += kappa[k] * H_Yk_S
+            else:
+                #print("Neuron types do not map correctly")
+                return
+        elif reciprocal:
             #excitatory neurons
             if neuron_k_type == "E":
                 #print(f"Neuron {k + 1} E kappa*H(Yk|Yk) = {H_Yk_S}")
@@ -279,23 +313,42 @@ def optimize_neuron_benchmark(N, M, k, strategies, mu, p_s, lr):
     strategies[k, :, 0] = 1 - strategies[k, :, 1]
     return strategies
 
-def optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False):
+def optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False, network=False):
     #Random jump optimization, trying a random strategy for neuron k
-    old_EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal)
+    old_EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal, network)
     #generates first column of random strategy
     random = np.random.rand(M, 1)
     #pieces random and 1-random columns together for new random strategy
     new_strategy = np.hstack((random, np.full((M, 1), 1) - random))
+    #new random mu and kappa parameters
+    if network:
+        new_mu = np.random.rand()
+        new_kappa = np.random.rand()
     #backup old strategy for neuron k
     old_strategy = strategies[k].copy()
+    old_mu = np.zeros(N)
+    old_kappa = np.zeros(N)
+    if network:
+        old_mu = mu.copy()
+        old_kappa = kappa.copy()
+        mu[k] = new_mu
+        kappa[k] = new_kappa
     #test new strategy
     strategies[k] = new_strategy
-    new_EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal)
+    new_EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal, network)
     #if new strategy performs worse, revert to old strategy
     if new_EV < old_EV:
         strategies[k] = old_strategy
-    if show_EV:
-        EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal)
+        mu = old_mu
+        kappa = old_kappa
+    if network:
+        if show_EV:
+            EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal, network)
+            return strategies, EV, mu, kappa
+        else:
+            return strategies, mu, kappa
+    elif show_EV:
+        EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal, network)
         return strategies, EV
     return strategies
 
@@ -347,7 +400,10 @@ def optimize_neuron_analytical(N, M, k, strategies, mu, p_s, lr):
 
 
 #main simulation function
-def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False, seed=15, trial=0):
+def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False, seed=15, trial=0, network=False):
+    if network:
+        autapse=False
+        reciprocal=True
     #each neuron k has a strategy matrix Y_k of shape (M, 2)
     #y_k[i, 1] = Pr(Y_k = 1 | s = s_i)
     #y_k[i, 0] = 1 - y_k[i, 1] = Pr(Y_k = 0 | s = s_i)
@@ -359,6 +415,8 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
     #intialize arrays for plot values
     strategy_traj = np.zeros((T, N, M))
     EV_traj = np.zeros((T, N))
+    mu_traj = np.zeros((T, N))
+    kappa_traj = np.zeros((T, N))
     encoding_qualities = []
     #intializing dataframe
     strategy_names = []
@@ -407,11 +465,21 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
                 strategy_traj[t, k, :] = strategies[k, :, 1]
         elif method == "Random":
             for k in order:
-                if show_EV:
-                    strategies, EV = optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types, kappa, bound, autapse, reciprocal, show_EV)
+                if network:
+                    if show_EV:
+                        strategies, EV, mu, kappa = optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types, kappa, bound, autapse, reciprocal, show_EV, network)
+                        EV_traj[t, k] = EV
+                        mu_traj[t, k] = mu[k]
+                        kappa_traj[t, k] = kappa[k]
+                    else:
+                        strategies, mu, kappa = optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types, kappa, bound, autapse, reciprocal, show_EV, network)
+                        mu_traj[t, k] = mu[k]
+                        kappa_traj[t, k] = kappa[k]
+                elif show_EV:
+                    strategies, EV = optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types, kappa, bound, autapse, reciprocal, show_EV, network)
                     EV_traj[t, k] = EV
                 else:
-                    strategies = optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types, kappa, bound, autapse, reciprocal, show_EV)
+                    strategies = optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types, kappa, bound, autapse, reciprocal, show_EV, network)
                 strategy_traj[t, k, :] = strategies[k, :, 1]
         elif method == "Benchmark":
             for k in order:
@@ -432,7 +500,16 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
     for neuron in range(N):
         for stimulus in range(M):
             df[f"Strategy N{neuron+1} M{stimulus+1}"] = strategy_traj[:, neuron, stimulus]
-    if show_EV:
+    if network:
+        if show_EV:
+            for neuron in range(N):
+                df[f'EV N{neuron + 1}'] = EV_traj[:, neuron]
+            df.to_csv(f"Simulation Values Trial {trial + 1}.csv", index=False)
+            return encoding_qualities, strategy_traj, EV_traj, mu_traj, kappa_traj
+        else:
+            df.to_csv(f"Simulation Values Trial {trial + 1}.csv", index=False)
+            return encoding_qualities, strategy_traj, mu_traj, kappa_traj
+    elif show_EV:
         for neuron in range(N):
             df[f'EV N{neuron+1}'] = EV_traj[:, neuron]
         df.to_csv(f"Simulation Values Trial {trial+1}.csv", index=False)
@@ -440,23 +517,44 @@ def simulation(N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.
     df.to_csv(f"Simulation Values Trial {trial+1}.csv", index=False)
     return encoding_qualities, strategy_traj
 
-def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False, seed=15):
+def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False, seed=15, network=False):
     runs = []
     neuron_strategies = []
     neuron_EVs = []
+    neuron_mus = []
+    neuron_kappas = []
+    if network:
+        autapse=False
+        reciprocal=True
     for trial in range(num_trials):
-        if show_EV:
-            encoding_qualities, strategies, EVs = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV, seed, trial)
+        if network:
+            if show_EV:
+                encoding_qualities, strategies, EVs, mus, kappas = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV, seed, trial, network)
+                runs.append(encoding_qualities)
+                neuron_strategies.append(strategies)
+                neuron_EVs.append(EVs)
+                neuron_mus.append(mus)
+                neuron_kappas.append(kappas)
+            else:
+                encoding_qualities, strategies, mus, kappas = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV, seed, trial, network)
+                runs.append(encoding_qualities)
+                neuron_strategies.append(strategies)
+                neuron_mus.append(mus)
+                neuron_kappas.append(kappas)
+        elif show_EV:
+            encoding_qualities, strategies, EVs = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV, seed, trial, network)
             runs.append(encoding_qualities)
             neuron_strategies.append(strategies)
             neuron_EVs.append(EVs)
         else:
-            encoding_qualities, strategies = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV, seed, trial)
+            encoding_qualities, strategies = simulation(N, M, T, mu, lr, signal_distr, method, neuron_types, kappa, bound, autapse, reciprocal, show_EV, seed, trial, network)
             runs.append(encoding_qualities)
             neuron_strategies.append(strategies)
     runs = np.array(runs)
     neuron_strategies = np.array(neuron_strategies)
     neuron_EVs = np.array(neuron_EVs)
+    neuron_mus = np.array(neuron_mus)
+    neuron_kappas = np.array(neuron_kappas)
     mean_runs = runs.mean(axis=0)
     std_dev_runs = runs.std(axis=0)
 
@@ -468,11 +566,14 @@ def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron
     plt.xlabel('Optimization Step')
     plt.ylabel('Conditional Entropy')
     plt.ylim(ymax=0.1)
-    plt.title(f'Encoding Quality Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}')
-    if signal_distr == "Half":
-        plt.title(f'Encoding Quality Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M//2}, mu = {mu}')
-    if kappa >= 0:
-        plt.title(f'Encoding Quality Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}, kappa = {kappa}')
+    if not network:
+        plt.title(f'Encoding Quality Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}')
+        if signal_distr == "Half":
+            plt.title(f'Encoding Quality Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M//2}, mu = {mu}')
+        if kappa >= 0:
+            plt.title(f'Encoding Quality Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}, kappa = {kappa}')
+    else:
+        plt.title(f'Encoding Quality Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -503,11 +604,14 @@ def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron
                 print("Error")
                 return
             #axes[k,s].legend()
-    fig.suptitle(f'Neuron Strategies Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}')
-    if signal_distr == "Half":
-        fig.suptitle(f'Neuron Strategies Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M//2}, mu = {mu}')
-    if kappa >= 0:
-        fig.suptitle(f'Neuron Strategies Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}, kappa = {kappa}')
+    if not network:
+        fig.suptitle(f'Neuron Strategies Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}')
+        if signal_distr == "Half":
+            fig.suptitle(f'Neuron Strategies Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M//2}, mu = {mu}')
+        if kappa >= 0:
+            fig.suptitle(f'Neuron Strategies Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}, kappa = {kappa}')
+    else:
+        fig.suptitle(f'Neuron Strategies Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}')
     plt.tight_layout()
     plt.show()
 
@@ -533,15 +637,68 @@ def simulation_average(num_trials, N, M, T, mu, lr, signal_distr, method, neuron
                     print("Error")
                     return
                 # axes[k,s].legend()
-        fig.suptitle(f'Neuron EVs Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}')
-        if signal_distr == "Half":
-            fig.suptitle(
-                f'Neuron EVs Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M // 2}, mu = {mu}')
-        if kappa >= 0:
-            fig.suptitle(
-                f'Neuron EVs Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}, kappa = {kappa}')
+        if not network:
+            fig.suptitle(f'Neuron EVs Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}')
+            if signal_distr == "Half":
+                fig.suptitle(
+                    f'Neuron EVs Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M // 2}, mu = {mu}')
+            if kappa >= 0:
+                fig.suptitle(
+                    f'Neuron EVs Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}, mu = {mu}, kappa = {kappa}')
+        else:
+            fig.suptitle(f'Neuron EVs Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}')
         plt.tight_layout()
         plt.show()
+
+    if network:
+        fig, axes = plt.subplots(N, num_trials, figsize=(1.5 * num_trials, 2 * N), sharex=True, sharey=True)
+
+        for k in range(N):
+            for trial in range(num_trials):
+                mus = neuron_mus[trial]
+                if num_trials > 1:
+                    axes[k, trial].plot(mus[:, k])  # , linestyle=":")
+                    axes[k, trial].set_title(f"Neuron {k + 1}")
+                    axes[k, trial].set_xlabel("Step")
+                    if trial == 0:
+                        axes[k, trial].set_ylabel("Mu")
+                elif num_trials == 1:
+                    axes[k].plot(mus[:, k])  # , linestyle=":")
+                    axes[k].set_title(f"Neuron {k + 1} Mus, Trial {trial + 1}")
+                    axes[k].set_xlabel("Optimization Step")
+                    if trial == 0:
+                        axes[k].set_ylabel("Mu")
+                else:
+                    print("Error")
+                    return
+        fig.suptitle(f'Neuron Mus Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}')
+        plt.tight_layout()
+        plt.show()
+
+        fig, axes = plt.subplots(N, num_trials, figsize=(1.5 * num_trials, 2 * N), sharex=True, sharey=True)
+
+        for k in range(N):
+            for trial in range(num_trials):
+                kappas = neuron_kappas[trial]
+                if num_trials > 1:
+                    axes[k, trial].plot(kappas[:, k])  # , linestyle=":")
+                    axes[k, trial].set_title(f"Neuron {k + 1}")
+                    axes[k, trial].set_xlabel("Step")
+                    if trial == 0:
+                        axes[k, trial].set_ylabel("Kappa")
+                elif num_trials == 1:
+                    axes[k].plot(kappas[:, k])  # , linestyle=":")
+                    axes[k].set_title(f"Neuron {k + 1} Kapps, Trial {trial + 1}")
+                    axes[k].set_xlabel("Optimization Step")
+                    if trial == 0:
+                        axes[k].set_ylabel("Kappa")
+                else:
+                    print("Error")
+                    return
+        fig.suptitle(f'Neuron Kappas Over Time ({method}) for {num_trials} Trials, N = {N}, M = {M}')
+        plt.tight_layout()
+        plt.show()
+
 
     return
 
@@ -764,7 +921,7 @@ np.random.seed(15)
 
 np.random.seed(15)
 
-simulation_average(num_trials=10, N=4, M=4, T=4000, mu=1, kappa=0, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=True, show_EV=True)
+simulation_average(num_trials=10, N=4, M=4, T=1000, mu=[0.5,0.5,0.5,0.5], kappa=[0.5,0.5,0.5,0.5], lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], network=True, show_EV=True)
 
 #simulation_average(num_trials=10, N=4, M=4, T=8000, mu=1, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
 
