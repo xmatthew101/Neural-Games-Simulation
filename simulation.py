@@ -314,33 +314,42 @@ def optimize_neuron_benchmark(N, M, k, strategies, mu, p_s, lr):
     return strategies
 
 def optimize_neuron_random(N, M, k, strategies, mu, p_s, neuron_types=[], kappa=-1.0, bound=0.0, autapse=False, reciprocal=True, show_EV=False, network=False):
+    optimized = False
     #Random jump optimization, trying a random strategy for neuron k
     old_EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal, network)
-    #generates first column of random strategy
-    random = np.random.rand(M, 1)
-    #pieces random and 1-random columns together for new random strategy
-    new_strategy = np.hstack((random, np.full((M, 1), 1) - random))
-    #new random mu and kappa parameters
-    if network:
-        new_mu = np.random.rand()
-        new_kappa = np.random.rand()
-    #backup old strategy for neuron k
-    old_strategy = strategies[k].copy()
-    old_mu = np.zeros(N)
-    old_kappa = np.zeros(N)
-    if network:
-        old_mu = mu.copy()
-        old_kappa = kappa.copy()
-        mu[k] = new_mu
-        kappa[k] = new_kappa
-    #test new strategy
-    strategies[k] = new_strategy
-    new_EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal, network)
-    #if new strategy performs worse, revert to old strategy
-    if new_EV < old_EV:
-        strategies[k] = old_strategy
-        mu = old_mu
-        kappa = old_kappa
+    for count in range(100):
+        #generates first column of random strategy
+        random = np.random.rand(M, 1)
+        #pieces random and 1-random columns together for new random strategy
+        new_strategy = np.hstack((random, np.full((M, 1), 1) - random))
+        #new random mu and kappa parameters
+        if network:
+            new_mu = np.random.rand()
+            new_kappa = np.random.rand()
+            if False:
+                new_mu = np.random.choice([0.0001,0.25,0.50,0.75,0.9999])
+                new_kappa = np.random.choice([0.0001, 0.25, 0.50, 0.75, 0.9999])
+        #backup old strategy for neuron k
+        old_strategy = strategies[k].copy()
+        old_mu = np.zeros(N)
+        old_kappa = np.zeros(N)
+        if network:
+            old_mu = mu.copy()
+            old_kappa = kappa.copy()
+            mu[k] = new_mu
+            kappa[k] = new_kappa
+        #test new strategy
+        strategies[k] = new_strategy
+        new_EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal, network)
+        #if new strategy performs worse, revert to old strategy
+        if new_EV < old_EV:
+            strategies[k] = old_strategy
+            mu = old_mu
+            kappa = old_kappa
+        else:
+            count=100
+            break
+
     if network:
         if show_EV:
             EV = compute_EV(N, M, k, strategies, mu, p_s, neuron_types, kappa, autapse, reciprocal, network)
@@ -932,7 +941,7 @@ np.random.seed(15)
 
 np.random.seed(15)
 
-simulation_average(num_trials=10, N=4, M=4, T=1000, mu=[0.5,0.5,0.5,0.5], kappa=[0.5,0.5,0.5,0.5], lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], network=True, show_EV=True)
+simulation_average(num_trials=10, N=4, M=4, T=100, mu=[0.5,0.5,0.5,0.5], kappa=[0.5,0.5,0.5,0.5], lr=0.01, signal_distr="Uniform", method="Random", neuron_types=["E", "E", "I", "I"], network=True, show_EV=True)
 
 #simulation_average(num_trials=10, N=4, M=4, T=8000, mu=1, kappa=0.5, lr=0.01, signal_distr="Uniform", method="Numerical", neuron_types=["E", "E", "I", "I"], autapse=True, reciprocal=False)
 
